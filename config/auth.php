@@ -26,8 +26,9 @@ function requireLogin(): void
 
 function currentUser(): ?array
 {
-    if (!isLoggedIn()) return null;
-    $db  = Database::getInstance();
+    if (!isLoggedIn())
+        return null;
+    $db = Database::getInstance();
     return $db->fetchOne(
         "SELECT id, full_name, email, user_type, profile_photo FROM users WHERE id = ? AND is_active = 1",
         [$_SESSION['user_id']]
@@ -37,6 +38,80 @@ function currentUser(): ?array
 function currentUserId(): int
 {
     return (int) ($_SESSION['user_id'] ?? 0);
+}
+
+function ensurePendingExpertProfilesTable(Database $db): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+
+    $db->execute(
+        "CREATE TABLE IF NOT EXISTS pending_expert_profiles (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            desired_user_type ENUM('expert','both') NOT NULL DEFAULT 'expert',
+            headline VARCHAR(255),
+            qualification VARCHAR(255),
+            domain VARCHAR(150),
+            skills TEXT,
+            expertise_areas TEXT,
+            experience_years INT,
+            current_role_name VARCHAR(200),
+            company VARCHAR(200),
+            linkedin_url VARCHAR(500),
+            portfolio_url VARCHAR(500),
+            rate_per_session DECIMAL(10,2) NOT NULL DEFAULT 0,
+            currency VARCHAR(3) DEFAULT 'USD',
+            session_duration_minutes INT DEFAULT 10,
+            max_response_hours INT DEFAULT 48,
+            status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+            admin_note TEXT,
+            reviewed_by INT NULL,
+            reviewed_at TIMESTAMP NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            CONSTRAINT fk_pep_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CONSTRAINT fk_pep_admin FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
+            INDEX idx_pep_status_created (status, created_at),
+            INDEX idx_pep_user_status (user_id, status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+
+    $ensured = true;
+}
+
+function ensureTemporaryPaymentsTable(Database $db): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+
+    $db->execute(
+        "CREATE TABLE IF NOT EXISTS temporary_payments (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            request_id INT NOT NULL,
+            client_id INT NOT NULL,
+            preferred_expert_id INT NOT NULL,
+            gateway ENUM('stripe','razorpay') NOT NULL DEFAULT 'razorpay',
+            amount DECIMAL(10,2) NOT NULL,
+            currency VARCHAR(3) DEFAULT 'USD',
+            status ENUM('initiated','paid','failed') NOT NULL DEFAULT 'paid',
+            transaction_ref VARCHAR(191),
+            paid_at TIMESTAMP NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_temp_pay_request FOREIGN KEY (request_id) REFERENCES thinking_requests(id) ON DELETE CASCADE,
+            CONSTRAINT fk_temp_pay_client FOREIGN KEY (client_id) REFERENCES users(id) ON DELETE CASCADE,
+            CONSTRAINT fk_temp_pay_expert FOREIGN KEY (preferred_expert_id) REFERENCES users(id) ON DELETE CASCADE,
+            INDEX idx_temp_pay_request (request_id),
+            INDEX idx_temp_pay_client (client_id),
+            INDEX idx_temp_pay_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+
+    $ensured = true;
 }
 
 function isExpertVerified(int $userId): bool
@@ -135,6 +210,8 @@ function registerUser(array $data): array
         }
 
         if (in_array($userType, ['expert', 'both'])) {
+            ensurePendingExpertProfilesTable($db);
+
             $expert = $data['expert'] ?? [];
             $normalizeText = static function ($value): ?string {
                 $value = trim((string) $value);
@@ -175,14 +252,15 @@ function registerUser(array $data): array
             $currency = substr($currency, 0, 3);
 
             $stmt = $conn->prepare(
-                "INSERT INTO expert_profiles
-                    (user_id, headline, qualification, domain, skills, expertise_areas, experience_years,
-                     current_role, company, linkedin_url, portfolio_url, rate_per_session, currency,
-                     session_duration_minutes, max_response_hours, is_available, is_verified)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)"
+                "INSERT INTO pending_expert_profiles
+                    (user_id, desired_user_type, headline, qualification, domain, skills, expertise_areas, experience_years,
+                     current_role_name, company, linkedin_url, portfolio_url, rate_per_session, currency,
+                     session_duration_minutes, max_response_hours, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')"
             );
             $stmt->execute([
                 $id,
+                $userType,
                 $normalizeText($expert['headline'] ?? null),
                 $normalizeText($expert['qualification'] ?? null),
                 $normalizeText($expert['domain'] ?? null),
@@ -198,9 +276,6 @@ function registerUser(array $data): array
                 $sessionMinutes,
                 $maxResponseHours,
             ]);
-
-            $stmt = $conn->prepare("INSERT INTO expert_wallet (expert_user_id) VALUES (?)");
-            $stmt->execute([$id]);
         }
 
         $conn->commit();
@@ -217,7 +292,7 @@ function registerUser(array $data): array
 
 function loginUser(string $email, string $password): array
 {
-    $db   = Database::getInstance();
+    $db = Database::getInstance();
     $user = $db->fetchOne(
         "SELECT u.id, u.password_hash, u.full_name, u.user_type, u.is_active, u.is_email_verified,
                 IFNULL(ep.is_verified, 0) AS expert_verified
@@ -236,7 +311,7 @@ function loginUser(string $email, string $password): array
     }
 
     // Set session
-    $_SESSION['user_id']   = $user['id'];
+    $_SESSION['user_id'] = $user['id'];
     $_SESSION['user_type'] = $user['user_type'];
     $_SESSION['user_name'] = $user['full_name'];
     $_SESSION['expert_verified'] = (int) ($user['expert_verified'] ?? 0);

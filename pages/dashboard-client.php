@@ -5,7 +5,7 @@ require_once __DIR__ . '/../config/auth.php';
 requireLogin();
 require_once __DIR__ . '/../includes/header.php';
 
-$db     = Database::getInstance();
+$db = Database::getInstance();
 $userId = currentUserId();
 
 // Metrics
@@ -32,13 +32,13 @@ $requests = $db->fetchAll(
 $recentRequests = array_slice($requests, 0, 6);
 
 $statusLabels = [
-  'submitted'  => ['br-status-submitted',  '📬 Submitted'],
-  'accepted'   => ['br-status-accepted',   '✓ Accepted'],
-  'thinking'   => ['br-status-thinking',   '⚙️ In Progress'],
-  'responded'  => ['br-status-responded',  '🎙️ Response Ready'],
-  'completed'  => ['br-status-completed',  '✓ Completed'],
-  'declined'   => ['br-status-declined',   '✗ Declined'],
-  'disputed'   => ['br-status-disputed',   '⚠ Disputed'],
+  'submitted' => ['br-status-submitted', '📬 Submitted'],
+  'accepted' => ['br-status-accepted', '✓ Accepted'],
+  'thinking' => ['br-status-thinking', '⚙️ In Progress'],
+  'responded' => ['br-status-responded', '🎙️ Response Ready'],
+  'completed' => ['br-status-completed', '✓ Completed'],
+  'declined' => ['br-status-declined', '✗ Declined'],
+  'disputed' => ['br-status-disputed', '⚠ Disputed'],
 ];
 ?>
 <div style="padding-top:64px;display:flex;height:calc(100vh - 64px)">
@@ -49,17 +49,23 @@ $statusLabels = [
       <div class="text-subtle" style="font-size:.72rem;font-weight:600;margin-bottom:2px">CLIENT PORTAL</div>
       <div class="fw-semibold"><?= htmlspecialchars($user['full_name']) ?></div>
     </div>
-    <a href="#overview" class="br-nav-item active" onclick="showSection('overview',this)"><i class="bi bi-grid icon me-2"></i>Overview</a>
+    <a href="#overview" class="br-nav-item active" onclick="showSection('overview',this)"><i
+        class="bi bi-grid icon me-2"></i>Overview</a>
     <a href="#requests" class="br-nav-item" onclick="showSection('requests',this)">
       <i class="bi bi-clipboard icon me-2"></i>My Requests
-      <?php if ($metrics['awaiting'] > 0): ?><span class="br-nav-badge"><?= $metrics['awaiting'] ?></span><?php endif; ?>
+      <?php if ($metrics['awaiting'] > 0): ?><span
+          class="br-nav-badge"><?= $metrics['awaiting'] ?></span><?php endif; ?>
     </a>
-    <a href="#notifications" class="br-nav-item" onclick="showSection('notifications',this)"><i class="bi bi-bell icon me-2"></i>Notifications</a>
-    <a href="#saved" class="br-nav-item" onclick="showSection('saved',this)"><i class="bi bi-bookmark icon me-2"></i>Saved Experts</a>
+    <a href="#notifications" class="br-nav-item" onclick="showSection('notifications',this)"><i
+        class="bi bi-bell icon me-2"></i>Notifications</a>
+    <a href="#saved" class="br-nav-item" onclick="showSection('saved',this)"><i
+        class="bi bi-bookmark icon me-2"></i>Saved Experts</a>
     <div style="margin-top:auto;padding-top:20px;border-top:1px solid var(--br-border)">
-      <a href="<?= APP_URL ?>/pages/browse.php" class="br-nav-item"><i class="bi bi-search icon me-2"></i>Find Experts</a>
+      <a href="<?= APP_URL ?>/pages/browse.php" class="br-nav-item"><i class="bi bi-search icon me-2"></i>Find
+        Experts</a>
       <?php if (in_array($user['user_type'], ['expert', 'both']) && isExpertVerified($user['id'])): ?>
-        <a href="<?= APP_URL ?>/pages/dashboard-expert.php" class="br-nav-item"><i class="bi bi-stars icon me-2"></i>Expert Mode</a>
+        <a href="<?= APP_URL ?>/pages/dashboard-expert.php" class="br-nav-item"><i
+            class="bi bi-stars icon me-2"></i>Expert Mode</a>
       <?php endif; ?>
     </div>
   </div>
@@ -70,7 +76,8 @@ $statusLabels = [
     <!-- OVERVIEW -->
     <div id="section-overview">
       <div class="mb-4">
-        <h1 class="br-section-title fs-3 mb-1">Good day, <?= htmlspecialchars(explode(' ', $user['full_name'])[0]) ?> 👋</h1>
+        <h1 class="br-section-title fs-3 mb-1">Good day, <?= htmlspecialchars(explode(' ', $user['full_name'])[0]) ?> 👋
+        </h1>
         <?php if ($metrics['awaiting'] > 0): ?>
           <p class="text-muted small">You have <?= $metrics['awaiting'] ?> response(s) waiting for your review.</p>
         <?php else: ?>
@@ -107,7 +114,8 @@ $statusLabels = [
       </div>
 
       <?php if ($metrics['awaiting'] > 0): ?>
-        <div class="br-alert br-alert-warning d-flex align-items-center gap-3 mb-4" style="cursor:pointer" onclick="showSection('requests',null)">
+        <div class="br-alert br-alert-warning d-flex align-items-center gap-3 mb-4" style="cursor:pointer"
+          onclick="showSection('requests',null)">
           <i class="bi bi-mic-fill text-gold fs-5"></i>
           <div class="flex-grow-1">
             <div class="fw-medium small">New expert response(s) ready!</div>
@@ -119,7 +127,8 @@ $statusLabels = [
 
       <!-- Recent Requests Table -->
       <div class="br-table">
-        <div class="d-flex justify-content-between align-items-center p-3" style="border-bottom:1px solid var(--br-border)">
+        <div class="d-flex justify-content-between align-items-center p-3"
+          style="border-bottom:1px solid var(--br-border)">
           <h6 class="fw-semibold mb-0">Recent Requests</h6>
           <a href="<?= APP_URL ?>/pages/browse.php" class="btn br-btn-outline btn-sm">+ New Request</a>
         </div>
@@ -137,26 +146,31 @@ $statusLabels = [
             <tbody>
               <?php foreach ($recentRequests as $req):
                 [$cls, $label] = $statusLabels[$req['status']] ?? ['br-status-completed', $req['status']];
-              ?>
+                ?>
                 <tr>
                   <td>
-                    <div class="fw-medium small"><?= htmlspecialchars(substr($req['title'], 0, 60)) ?><?= strlen($req['title']) > 60 ? '…' : '' ?></div>
+                    <div class="fw-medium small">
+                      <?= htmlspecialchars(substr($req['title'], 0, 60)) ?>  <?= strlen($req['title']) > 60 ? '…' : '' ?>
+                    </div>
                   </td>
                   <td class="text-muted small"><?= htmlspecialchars($req['expert_name']) ?></td>
                   <td><span class="br-status <?= $cls ?>"><?= $label ?></span></td>
                   <td class="mono text-gold small">$<?= number_format($req['agreed_rate'], 0) ?></td>
                   <td>
                     <?php if ($req['status'] === 'responded'): ?>
-                      <button class="btn br-btn-gold btn-sm" onclick="openRequestModal(<?= $req['id'] ?>)">Review</button>
+                      <a class="btn br-btn-gold btn-sm"
+                        href="<?= APP_URL ?>/pages/problem.php?id=<?= (int) $req['id'] ?>">Review</a>
                     <?php else: ?>
-                      <button class="btn br-btn-ghost btn-sm" onclick="openRequestModal(<?= $req['id'] ?>)">View</button>
+                      <a class="btn br-btn-ghost btn-sm"
+                        href="<?= APP_URL ?>/pages/problem.php?id=<?= (int) $req['id'] ?>">View</a>
                     <?php endif; ?>
                   </td>
                 </tr>
               <?php endforeach; ?>
               <?php if (!$requests): ?>
                 <tr>
-                  <td colspan="5" class="text-center text-muted py-4">No requests yet. <a href="<?= APP_URL ?>/pages/browse.php" class="text-gold">Browse experts →</a></td>
+                  <td colspan="5" class="text-center text-muted py-4">No requests yet. <a
+                      href="<?= APP_URL ?>/pages/browse.php" class="text-gold">Browse experts →</a></td>
                 </tr>
               <?php endif; ?>
             </tbody>
@@ -189,10 +203,12 @@ $statusLabels = [
             <tbody>
               <?php foreach ($requests as $req):
                 [$cls, $label] = $statusLabels[$req['status']] ?? ['br-status-completed', $req['status']];
-              ?>
+                ?>
                 <tr>
                   <td>
-                    <div class="fw-medium small"><?= htmlspecialchars(substr($req['title'], 0, 70)) ?><?= strlen($req['title']) > 70 ? '…' : '' ?></div>
+                    <div class="fw-medium small">
+                      <?= htmlspecialchars(substr($req['title'], 0, 70)) ?>  <?= strlen($req['title']) > 70 ? '…' : '' ?>
+                    </div>
                   </td>
                   <td class="text-muted small"><?= htmlspecialchars($req['expert_name']) ?></td>
                   <td><span class="br-status <?= $cls ?>"><?= $label ?></span></td>
@@ -201,16 +217,19 @@ $statusLabels = [
                   <td class="text-muted small"><?= date('M j, Y', strtotime($req['created_at'])) ?></td>
                   <td>
                     <?php if ($req['status'] === 'responded'): ?>
-                      <button class="btn br-btn-gold btn-sm" onclick="openRequestModal(<?= $req['id'] ?>)">Review</button>
+                      <a class="btn br-btn-gold btn-sm"
+                        href="<?= APP_URL ?>/pages/problem.php?id=<?= (int) $req['id'] ?>">Review</a>
                     <?php else: ?>
-                      <button class="btn br-btn-ghost btn-sm" onclick="openRequestModal(<?= $req['id'] ?>)">View</button>
+                      <a class="btn br-btn-ghost btn-sm"
+                        href="<?= APP_URL ?>/pages/problem.php?id=<?= (int) $req['id'] ?>">View</a>
                     <?php endif; ?>
                   </td>
                 </tr>
               <?php endforeach; ?>
               <?php if (!$requests): ?>
                 <tr>
-                  <td colspan="7" class="text-center text-muted py-4">No requests yet. <a href="<?= APP_URL ?>/pages/browse.php" class="text-gold">Browse experts →</a></td>
+                  <td colspan="7" class="text-center text-muted py-4">No requests yet. <a
+                      href="<?= APP_URL ?>/pages/browse.php" class="text-gold">Browse experts →</a></td>
                 </tr>
               <?php endif; ?>
             </tbody>
@@ -314,7 +333,7 @@ $statusLabels = [
     <div class="p-3 mb-3" style="background:var(--br-dark3);border-radius:10px">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <span class="small fw-medium">🎙️ Voice Response</span>
-        ${r.voice_duration_seconds ? `<span class="mono text-muted small">${Math.floor(r.voice_duration_seconds/60)}:${String(r.voice_duration_seconds%60).padStart(2,'0')}</span>` : ''}
+        ${r.voice_duration_seconds ? `<span class="mono text-muted small">${Math.floor(r.voice_duration_seconds / 60)}:${String(r.voice_duration_seconds % 60).padStart(2, '0')}</span>` : ''}
       </div>
       <audio src="${r.voice_url}" controls class="w-100"></audio>
     </div>` : ''}
@@ -328,9 +347,9 @@ $statusLabels = [
     ${insights.length ? `
     <div class="mb-3">
       <div class="text-subtle small mb-2" style="text-transform:uppercase;letter-spacing:1px">Key Insights</div>
-      ${insights.map((ins,i) => `
+      ${insights.map((ins, i) => `
         <div class="d-flex gap-2 py-2" style="border-bottom:1px solid var(--br-border)">
-          <div style="min-width:22px;height:22px;background:var(--br-gold-dim);color:var(--br-gold);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700">${i+1}</div>
+          <div style="min-width:22px;height:22px;background:var(--br-gold-dim);color:var(--br-gold);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700">${i + 1}</div>
           <div class="text-muted small">${escHtml(ins)}</div>
         </div>`).join('')}
     </div>` : ''}
@@ -353,11 +372,11 @@ $statusLabels = [
     <div>
       <div class="small fw-medium mb-2">Rate This Response</div>
       <div class="d-flex gap-4 flex-wrap mb-2">
-        ${['Clarity','Depth','Usefulness'].map(r => `
+        ${['Clarity', 'Depth', 'Usefulness'].map(r => `
           <div>
             <div class="text-subtle" style="font-size:.72rem;margin-bottom:3px">${r}</div>
             <div data-star-rating="${r.toLowerCase()}" class="d-flex gap-1">
-              ${[1,2,3,4,5].map(s => `<span class="br-star" data-val="${s}" style="cursor:pointer;color:var(--br-gold)">★</span>`).join('')}
+              ${[1, 2, 3, 4, 5].map(s => `<span class="br-star" data-val="${s}" style="cursor:pointer;color:var(--br-gold)">★</span>`).join('')}
               <input type="hidden" name="${r.toLowerCase()}_rating" value="5">
             </div>
           </div>`).join('')}

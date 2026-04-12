@@ -3,4 +3,4 @@
 // This file is meant to stay on your computer only.
 
 define('DB_USER', 'root');
-define('DB_PASSWORD', 'P@tn@1234');
+define('DB_PASSWORD', '1234');

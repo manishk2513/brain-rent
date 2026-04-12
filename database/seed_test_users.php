@@ -43,7 +43,7 @@ function ensureExpertProfile(Database $db, int $userId): void
 
     $db->execute(
         "INSERT INTO expert_profiles
-            (user_id, headline, expertise_areas, experience_years, current_role, company, rate_per_session, currency, session_duration_minutes, max_response_hours, is_available, is_verified)
+            (user_id, headline, expertise_areas, experience_years, current_role_name, company, rate_per_session, currency, session_duration_minutes, max_response_hours, is_available, is_verified)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)",
         [
             $userId,

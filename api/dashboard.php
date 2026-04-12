@@ -11,9 +11,9 @@ require_once __DIR__ . '/../config/auth.php';
 
 requireLogin();
 
-$db     = Database::getInstance();
+$db = Database::getInstance();
 $userId = currentUserId();
-$type   = $_GET['type'] ?? 'client';
+$type = $_GET['type'] ?? 'client';
 
 // =============================================
 // CLIENT DASHBOARD
@@ -53,9 +53,9 @@ if ($type === 'client') {
     );
 
     jsonResponse([
-        'success'       => true,
-        'metrics'       => $metrics,
-        'requests'      => $requests,
+        'success' => true,
+        'metrics' => $metrics,
+        'requests' => $requests,
         'notifications' => $notifications,
     ]);
 }
@@ -98,9 +98,9 @@ if ($type === 'expert') {
             u.full_name AS client_name
          FROM thinking_requests tr
          INNER JOIN users u ON tr.client_id = u.id
-         WHERE tr.expert_id = ? AND tr.status = 'submitted'
+         WHERE tr.status = 'submitted'
          ORDER BY tr.urgency DESC, tr.created_at ASC",
-        [$userId]
+        []
     );
 
     $activeRequests = $db->fetchAll(
@@ -108,7 +108,8 @@ if ($type === 'expert') {
                 tr.response_deadline, u.full_name AS client_name
          FROM thinking_requests tr
          INNER JOIN users u ON tr.client_id = u.id
-         WHERE tr.expert_id = ? AND tr.status IN ('accepted','thinking')
+         WHERE tr.status = 'submitted'
+            OR (tr.expert_id = ? AND tr.status IN ('accepted','thinking'))
          ORDER BY tr.response_deadline ASC",
         [$userId]
     );
@@ -126,11 +127,11 @@ if ($type === 'expert') {
     );
 
     jsonResponse([
-        'success'        => true,
-        'profile'        => $profile,
-        'wallet'         => $wallet,
-        'this_month'     => $thisMonth,
-        'new_requests'   => $newRequests,
+        'success' => true,
+        'profile' => $profile,
+        'wallet' => $wallet,
+        'this_month' => $thisMonth,
+        'new_requests' => $newRequests,
         'active_requests' => $activeRequests,
         'recent_earnings' => $recentEarnings,
     ]);

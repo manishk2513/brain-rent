@@ -3,6 +3,7 @@
 $title = 'Upload Notes';
 require_once __DIR__ . '/../config/auth.php';
 requireLogin();
+require_once __DIR__ . '/../includes/upload_media_helpers.php';
 
 $db = Database::getInstance();
 $user = currentUser();
@@ -39,25 +40,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       } elseif ($file['size'] > 25 * 1024 * 1024) { // 25MB limit
         $error = 'File too large. Maximum size is 25MB.';
       } else {
-        // Create unique filename
-        $filename = uniqid() . '_' . time() . '.' . $ext;
-        $uploadPath = __DIR__ . '/../uploads/notes/' . $filename;
+        $uploadRoot = __DIR__ . '/../uploads';
+        $notesDir = $uploadRoot . '/notes';
+        $thumbDir = $uploadRoot . '/thumbnails';
 
-        if (move_uploaded_file($file['tmp_name'], $uploadPath)) {
-          $filePath = APP_URL . '/uploads/notes/' . $filename;
-          $fileSize = $file['size'];
+        if (
+          (!is_dir($notesDir) && !mkdir($notesDir, 0755, true) && !is_dir($notesDir)) ||
+          (!is_dir($thumbDir) && !mkdir($thumbDir, 0755, true) && !is_dir($thumbDir))
+        ) {
+          $error = 'Upload directory is not writable. Please contact admin.';
+        }
 
-          $db->execute(
-            "INSERT INTO notes (title, subject, category, description, file_path, file_size, file_type, uploaded_by)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [$noteTitle, $subject, $category, $description, $filePath, $fileSize, $ext, $user['id']]
-          );
+        if ($error === '') {
+          // Create unique filename
+          $filename = uniqid() . '_' . time() . '.' . $ext;
+          $uploadPath = $notesDir . '/' . $filename;
 
-          $success = 'Notes uploaded successfully!';
-          header('Location: ' . APP_URL . '/pages/notes.php');
-          exit;
-        } else {
-          $error = 'Failed to upload file. Please try again.';
+          if (move_uploaded_file($file['tmp_name'], $uploadPath)) {
+            $filePath = APP_URL . '/uploads/notes/' . $filename;
+            $fileSize = $file['size'];
+            $thumbnail = brAutoCaptureThumbnail($uploadPath, $ext, $thumbDir);
+
+            $db->execute(
+              "INSERT INTO notes (title, subject, category, description, file_path, file_size, file_type, thumbnail, uploaded_by)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              [$noteTitle, $subject, $category, $description, $filePath, $fileSize, $ext, $thumbnail, $user['id']]
+            );
+
+            $success = 'Notes uploaded successfully!';
+            header('Location: ' . APP_URL . '/pages/notes.php');
+            exit;
+          } else {
+            $error = 'Failed to upload file. Please check folder permissions and try again.';
+          }
         }
       }
     }
@@ -95,7 +110,8 @@ require_once __DIR__ . '/../includes/header.php';
 
       <div class="mb-4">
         <label class="br-form-label">Note Title *</label>
-        <input type="text" name="title" class="br-form-control" required value="<?= htmlspecialchars($_POST['title'] ?? '') ?>" placeholder="e.g., Calculus Chapter 5 Notes">
+        <input type="text" name="title" class="br-form-control" required
+          value="<?= htmlspecialchars($_POST['title'] ?? '') ?>" placeholder="e.g., Calculus Chapter 5 Notes">
       </div>
 
       <div class="row mb-4">
@@ -134,12 +150,14 @@ require_once __DIR__ . '/../includes/header.php';
 
       <div class="mb-4">
         <label class="br-form-label">Description</label>
-        <textarea name="description" class="br-form-control" rows="4" placeholder="Brief description of what these notes cover..."><?= htmlspecialchars($_POST['description'] ?? '') ?></textarea>
+        <textarea name="description" class="br-form-control" rows="4"
+          placeholder="Brief description of what these notes cover..."><?= htmlspecialchars($_POST['description'] ?? '') ?></textarea>
       </div>
 
       <div class="mb-4">
         <label class="br-form-label">Notes File * (PDF, DOC, DOCX, TXT, PPT, PPTX - Max 25MB)</label>
         <input type="file" name="notes" class="br-form-control" accept=".pdf,.doc,.docx,.txt,.ppt,.pptx" required>
+        <small class="text-muted">Thumbnail is auto-generated from the uploaded file.</small>
       </div>
 
       <button type="submit" class="btn br-btn-gold btn-lg w-100" id="notes-upload-submit">
@@ -152,13 +170,13 @@ require_once __DIR__ . '/../includes/header.php';
 </main>
 
 <script>
-  (function() {
+  (function () {
     var form = document.getElementById('notes-upload-form');
     var button = document.getElementById('notes-upload-submit');
 
     if (!form || !button) return;
 
-    form.addEventListener('submit', function() {
+    form.addEventListener('submit', function () {
       button.disabled = true;
       button.textContent = 'Uploading...';
     });
