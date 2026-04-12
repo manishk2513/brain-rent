@@ -3,6 +3,7 @@
 $title = 'Upload Video';
 require_once __DIR__ . '/../config/auth.php';
 requireLogin();
+require_once __DIR__ . '/../includes/upload_media_helpers.php';
 
 $db = Database::getInstance();
 $user = currentUser();
@@ -31,39 +32,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($file['size'] > 500 * 1024 * 1024) { // 500MB limit
       $error = 'File too large. Maximum size is 500MB.';
     } else {
-      // Create unique filename
-      $filename = uniqid() . '_' . time() . '.' . $ext;
-      $uploadPath = __DIR__ . '/../uploads/videos/' . $filename;
+      $uploadRoot = __DIR__ . '/../uploads';
+      $videosDir = $uploadRoot . '/videos';
+      $thumbDir = $uploadRoot . '/thumbnails';
 
-      if (move_uploaded_file($file['tmp_name'], $uploadPath)) {
-        // Handle thumbnail if uploaded
-        $thumbnail = null;
-        if (isset($_FILES['thumbnail']) && $_FILES['thumbnail']['error'] === UPLOAD_ERR_OK) {
-          $thumbFile = $_FILES['thumbnail'];
-          $thumbExt = strtolower(pathinfo($thumbFile['name'], PATHINFO_EXTENSION));
-          if (in_array($thumbExt, ['jpg', 'jpeg', 'png', 'webp'])) {
-            $thumbFilename = uniqid() . '_thumb.' . $thumbExt;
-            $thumbPath = __DIR__ . '/../uploads/thumbnails/' . $thumbFilename;
-            if (move_uploaded_file($thumbFile['tmp_name'], $thumbPath)) {
-              $thumbnail = APP_URL . '/uploads/thumbnails/' . $thumbFilename;
+      if (
+        (!is_dir($videosDir) && !mkdir($videosDir, 0755, true) && !is_dir($videosDir)) ||
+        (!is_dir($thumbDir) && !mkdir($thumbDir, 0755, true) && !is_dir($thumbDir))
+      ) {
+        $error = 'Upload directory is not writable. Please contact admin.';
+      }
+
+      if ($error === '') {
+        // Create unique filename
+        $filename = uniqid() . '_' . time() . '.' . $ext;
+        $uploadPath = $videosDir . '/' . $filename;
+
+        if (move_uploaded_file($file['tmp_name'], $uploadPath)) {
+          $thumbnail = brAutoCaptureThumbnail($uploadPath, $ext, $thumbDir);
+
+          // Optional manual thumbnail override
+          if (isset($_FILES['thumbnail']) && $_FILES['thumbnail']['error'] === UPLOAD_ERR_OK) {
+            $thumbFile = $_FILES['thumbnail'];
+            $thumbExt = strtolower(pathinfo($thumbFile['name'], PATHINFO_EXTENSION));
+            if (in_array($thumbExt, ['jpg', 'jpeg', 'png', 'webp'])) {
+              $thumbFilename = uniqid() . '_thumb.' . $thumbExt;
+              $thumbPath = $thumbDir . '/' . $thumbFilename;
+              if (move_uploaded_file($thumbFile['tmp_name'], $thumbPath)) {
+                $thumbnail = APP_URL . '/uploads/thumbnails/' . $thumbFilename;
+              }
             }
           }
+
+          $filePath = APP_URL . '/uploads/videos/' . $filename;
+          $fileSize = $file['size'];
+
+          $db->execute(
+            "INSERT INTO problem_solving_videos (title, problem_type, difficulty, description, video_path, video_size, thumbnail, uploaded_by)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [$videoTitle, $problemType, $difficulty, $description, $filePath, $fileSize, $thumbnail, $user['id']]
+          );
+
+          $success = 'Video uploaded successfully!';
+          header('Location: ' . APP_URL . '/pages/problem-solving.php');
+          exit;
+        } else {
+          $error = 'Failed to upload file. Please check folder permissions and try again.';
         }
-
-        $filePath = APP_URL . '/uploads/videos/' . $filename;
-        $fileSize = $file['size'];
-
-        $db->execute(
-          "INSERT INTO problem_solving_videos (title, problem_type, difficulty, description, video_path, video_size, thumbnail, uploaded_by)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-          [$videoTitle, $problemType, $difficulty, $description, $filePath, $fileSize, $thumbnail, $user['id']]
-        );
-
-        $success = 'Video uploaded successfully!';
-        header('Location: ' . APP_URL . '/pages/problem-solving.php');
-        exit;
-      } else {
-        $error = 'Failed to upload file. Please try again.';
       }
     }
   }
@@ -94,7 +109,9 @@ require_once __DIR__ . '/../includes/header.php';
 
       <div class="mb-4">
         <label class="br-form-label">Video Title *</label>
-        <input type="text" name="title" class="br-form-control" required value="<?= htmlspecialchars($_POST['title'] ?? '') ?>" placeholder="e.g., Solving Quadratic Equations - Step by Step">
+        <input type="text" name="title" class="br-form-control" required
+          value="<?= htmlspecialchars($_POST['title'] ?? '') ?>"
+          placeholder="e.g., Solving Quadratic Equations - Step by Step">
       </div>
 
       <div class="row mb-4">
@@ -126,7 +143,8 @@ require_once __DIR__ . '/../includes/header.php';
 
       <div class="mb-4">
         <label class="br-form-label">Description</label>
-        <textarea name="description" class="br-form-control" rows="4" placeholder="Describe what problem this video solves and the approach used..."><?= htmlspecialchars($_POST['description'] ?? '') ?></textarea>
+        <textarea name="description" class="br-form-control" rows="4"
+          placeholder="Describe what problem this video solves and the approach used..."><?= htmlspecialchars($_POST['description'] ?? '') ?></textarea>
       </div>
 
       <div class="mb-4">
@@ -138,7 +156,8 @@ require_once __DIR__ . '/../includes/header.php';
       <div class="mb-4">
         <label class="br-form-label">Thumbnail Image (Optional)</label>
         <input type="file" name="thumbnail" class="br-form-control" accept="image/*">
-        <small class="text-muted">Upload a thumbnail to make your video stand out</small>
+        <small class="text-muted">Auto-generated from video. Upload a custom image only if you want to override
+          it.</small>
       </div>
 
       <div class="alert br-alert-info mb-4">

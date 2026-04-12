@@ -1,7 +1,9 @@
 <?php
 // database/setup_database.php
 // Run this script to create and populate the database
-// Usage: php database/setup_database.php
+// Usage:
+//   php database/setup_database.php          (safe mode: keeps existing data)
+//   php database/setup_database.php --reset  (drops and rebuilds database)
 
 echo "====================================\n";
 echo "BrainRent MySQL Database Setup\n";
@@ -183,30 +185,20 @@ function brainrent_extract_statements(string $sql, string $delimiter): array
     return $out;
 }
 
-try {
-    // Connect without database to create it
-    echo "Connecting to MySQL server...\n";
-    $pdo = new PDO("mysql:host=" . DB_SERVER . ";port=" . DB_PORT, DB_USER, DB_PASSWORD, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
-    ]);
-    echo "✓ Connected successfully!\n\n";
-
-    // Read SQL file
-    echo "Reading SQL schema...\n";
-    $sqlFile = __DIR__ . '/brain_rent_mysql.sql';
-
+/**
+ * Execute SQL statements from a file.
+ * When $skipDbStatements is true, CREATE DATABASE and USE statements are ignored.
+ */
+function brainrent_exec_sql_file(PDO $pdo, string $sqlFile, bool $skipDbStatements = false): void
+{
     if (!file_exists($sqlFile)) {
-        die("Error: SQL file not found at: $sqlFile\n");
+        throw new RuntimeException("SQL file not found at: {$sqlFile}");
     }
 
     $sql = file_get_contents($sqlFile);
-    echo "✓ SQL file loaded!\n\n";
-
-    // Execute SQL statements
-    echo "Executing SQL statements...\n";
-
-    // Fresh setup: drop the database so re-running doesn't fail on existing tables.
-    $pdo->exec('DROP DATABASE IF EXISTS ' . DB_NAME);
+    if ($sql === false) {
+        throw new RuntimeException("Failed to read SQL file: {$sqlFile}");
+    }
 
     $statements = brainrent_split_sql_statements($sql);
     foreach ($statements as $stmt) {
@@ -214,13 +206,102 @@ try {
         if ($trim === '') {
             continue;
         }
+
+        if ($skipDbStatements && preg_match('/^(CREATE\s+DATABASE|USE\s+)/i', $trim)) {
+            continue;
+        }
+
         $pdo->exec($trim);
     }
-    echo "✓ Database created and populated successfully!\n\n";
+}
+
+function brainrent_database_exists(PDO $pdo, string $dbName): bool
+{
+    $stmt = $pdo->prepare("SELECT COUNT(*) AS cnt FROM information_schema.schemata WHERE schema_name = ?");
+    $stmt->execute([$dbName]);
+    return (int) ($stmt->fetch(PDO::FETCH_ASSOC)['cnt'] ?? 0) > 0;
+}
+
+function brainrent_table_exists(PDO $pdo, string $dbName, string $tableName): bool
+{
+    $stmt = $pdo->prepare("SELECT COUNT(*) AS cnt FROM information_schema.tables WHERE table_schema = ? AND table_name = ?");
+    $stmt->execute([$dbName, $tableName]);
+    return (int) ($stmt->fetch(PDO::FETCH_ASSOC)['cnt'] ?? 0) > 0;
+}
+
+function brainrent_table_count(PDO $pdo, string $dbName): int
+{
+    $stmt = $pdo->prepare("SELECT COUNT(*) AS cnt FROM information_schema.tables WHERE table_schema = ?");
+    $stmt->execute([$dbName]);
+    return (int) ($stmt->fetch(PDO::FETCH_ASSOC)['cnt'] ?? 0);
+}
+
+try {
+    $forceReset = in_array('--reset', $argv ?? [], true);
+
+    echo $forceReset
+        ? "Mode: RESET (existing data will be erased)\n\n"
+        : "Mode: SAFE (existing data will be preserved)\n\n";
+
+    echo "Connecting to MySQL server...\n";
+    $pdoServer = new PDO("mysql:host=" . DB_SERVER . ";port=" . DB_PORT, DB_USER, DB_PASSWORD, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+    ]);
+    echo "✓ Connected successfully!\n\n";
+
+    $mainSchemaFile = __DIR__ . '/brain_rent_mysql.sql';
+    echo "Reading SQL schema...\n";
+    if (!file_exists($mainSchemaFile)) {
+        throw new RuntimeException("SQL file not found at: {$mainSchemaFile}");
+    }
+    echo "✓ SQL file loaded!\n\n";
+
+    $dbExists = brainrent_database_exists($pdoServer, DB_NAME);
+
+    if ($forceReset) {
+        echo "Executing SQL statements (reset mode)...\n";
+        $pdoServer->exec('DROP DATABASE IF EXISTS ' . DB_NAME);
+        brainrent_exec_sql_file($pdoServer, $mainSchemaFile, false);
+        echo "✓ Database recreated from scratch.\n\n";
+    } else {
+        if (!$dbExists) {
+            echo "Database not found. Creating new database...\n";
+            brainrent_exec_sql_file($pdoServer, $mainSchemaFile, false);
+            echo "✓ Database created and populated successfully.\n\n";
+        } else {
+            $tableCount = brainrent_table_count($pdoServer, DB_NAME);
+            $hasUsersTable = brainrent_table_exists($pdoServer, DB_NAME, 'users');
+
+            if (!$hasUsersTable && $tableCount > 0) {
+                echo "✗ Database exists but appears partially initialized ({$tableCount} tables, users table missing).\n";
+                echo "Run reset mode once to repair:\n";
+                echo "  php database/setup_database.php --reset\n\n";
+                exit(1);
+            }
+
+            if (!$hasUsersTable && $tableCount === 0) {
+                echo "Database exists but is empty. Importing main schema...\n";
+                $pdoDbInit = new PDO("mysql:host=" . DB_SERVER . ";port=" . DB_PORT . ";dbname=" . DB_NAME, DB_USER, DB_PASSWORD, [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+                ]);
+                brainrent_exec_sql_file($pdoDbInit, $mainSchemaFile, true);
+                echo "✓ Main schema imported.\n\n";
+            } else {
+                echo "Database already initialized. Preserving existing records.\n";
+                echo "✓ Core schema import skipped.\n\n";
+            }
+        }
+    }
+
+    $pdoDb = new PDO("mysql:host=" . DB_SERVER . ";port=" . DB_PORT . ";dbname=" . DB_NAME, DB_USER, DB_PASSWORD, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+    ]);
 
     $featureFiles = [
         __DIR__ . '/add_new_features.sql',
         __DIR__ . '/add_admin_features.sql',
+        __DIR__ . '/add_pending_expert_features.sql',
+        __DIR__ . '/add_temp_payment_features.sql',
     ];
 
     foreach ($featureFiles as $featureFile) {
@@ -228,28 +309,12 @@ try {
             continue;
         }
         echo "Importing " . basename($featureFile) . "...\n";
-        $featureSql = file_get_contents($featureFile);
-        if ($featureSql === false) {
-            continue;
-        }
-        $featureStatements = brainrent_split_sql_statements($featureSql);
-        foreach ($featureStatements as $stmt) {
-            $trim = trim($stmt);
-            if ($trim === '') {
-                continue;
-            }
-            $pdo->exec($trim);
-        }
+        brainrent_exec_sql_file($pdoDb, $featureFile, true);
         echo "✓ " . basename($featureFile) . " imported\n";
     }
 
-    // Verify tables were created
     echo "Verifying database...\n";
-    $pdo = new PDO("mysql:host=" . DB_SERVER . ";port=" . DB_PORT . ";dbname=" . DB_NAME, DB_USER, DB_PASSWORD, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
-    ]);
-
-    $stmt = $pdo->query("SHOW TABLES");
+    $stmt = $pdoDb->query("SHOW TABLES");
     $tables = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
     echo "✓ Found " . count($tables) . " tables:\n";
@@ -257,31 +322,33 @@ try {
         echo "  - $table\n";
     }
 
-    // Check seed data
     echo "\nVerifying seed data...\n";
-    $stmt = $pdo->query("SELECT COUNT(*) as cnt FROM users");
+    $stmt = $pdoDb->query("SELECT COUNT(*) as cnt FROM users");
     $userCount = $stmt->fetch(PDO::FETCH_ASSOC)['cnt'];
     echo "✓ Users: $userCount\n";
 
-    $stmt = $pdo->query("SELECT COUNT(*) as cnt FROM expert_profiles");
+    $stmt = $pdoDb->query("SELECT COUNT(*) as cnt FROM expert_profiles");
     $expertCount = $stmt->fetch(PDO::FETCH_ASSOC)['cnt'];
     echo "✓ Expert profiles: $expertCount\n";
 
-    $stmt = $pdo->query("SELECT COUNT(*) as cnt FROM expertise_categories");
+    $stmt = $pdoDb->query("SELECT COUNT(*) as cnt FROM expertise_categories");
     $catCount = $stmt->fetch(PDO::FETCH_ASSOC)['cnt'];
     echo "✓ Categories: $catCount\n";
 
     echo "\n====================================\n";
     echo "✓ Setup complete!\n";
     echo "====================================\n\n";
+    echo "Tip: Safe mode keeps existing rows.\n";
+    echo "To reset database completely, run:\n";
+    echo "  php database/setup_database.php --reset\n\n";
     echo "You can now start the development server:\n";
     echo "  php -S localhost:8000 -t .\n\n";
     echo "Then visit: http://localhost:8000/pages/index.php\n\n";
-} catch (PDOException $e) {
+} catch (Throwable $e) {
     echo "\n✗ Error: " . $e->getMessage() . "\n\n";
 
     if (strpos($e->getMessage(), 'Access denied') !== false) {
-        echo "Please update the database credentials in this file or config/db.php\n";
+        echo "Please update the database credentials in config/db.local.php or config/db.php\n";
         echo "Current settings:\n";
         echo "  Host: " . DB_SERVER . "\n";
         echo "  User: " . DB_USER . "\n";

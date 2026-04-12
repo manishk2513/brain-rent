@@ -14,7 +14,7 @@ $users = $db->fetchAll(
             ep.is_verified AS expert_is_verified,
             ep.is_available AS expert_is_available,
             ep.headline, ep.qualification, ep.domain, ep.skills, ep.expertise_areas,
-            ep.experience_years, ep.current_role, ep.company,
+            ep.experience_years, ep.current_role_name AS `current_role`, ep.company,
             ep.linkedin_url, ep.portfolio_url,
             ep.rate_per_session, ep.currency, ep.session_duration_minutes, ep.max_response_hours
      FROM users u
@@ -111,7 +111,7 @@ $message = $_GET['message'] ?? '';
                     <tbody>
                         <?php $serial = 1;
                         foreach ($users as $u): ?>
-                            <tr class="admin-user-row" data-user-id="<?= (int)$u['id'] ?>">
+                            <tr class="admin-user-row" data-user-id="<?= (int) $u['id'] ?>">
                                 <td><?= $serial++ ?></td>
                                 <td><?= htmlspecialchars($u['full_name']) ?></td>
                                 <td><?= htmlspecialchars($u['email']) ?></td>
@@ -119,12 +119,17 @@ $message = $_GET['message'] ?? '';
                                 <td><?= $u['is_active'] ? 'Active' : 'Disabled' ?></td>
                                 <td><?= date('M j, Y', strtotime($u['created_at'])) ?></td>
                                 <td>
+                                    <?php if (in_array($u['user_type'], ['expert', 'both'])): ?>
+                                        <a href="<?= APP_URL ?>/admin/expert-review.php?id=<?= (int) $u['id'] ?>"
+                                            class="btn br-btn-ghost btn-sm">Review</a>
+                                    <?php endif; ?>
                                     <?php if ($u['user_type'] !== 'admin'): ?>
-                                        <form method="post" action="<?= APP_URL ?>/admin/actions.php" style="display:inline-block">
+                                        <form method="post" action="<?= APP_URL ?>/admin/actions.php"
+                                            style="display:inline-block">
                                             <input type="hidden" name="csrf" value="<?= csrfToken() ?>">
                                             <input type="hidden" name="entity" value="users">
                                             <input type="hidden" name="action" value="toggle_active">
-                                            <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                                            <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
                                             <input type="hidden" name="redirect" value="<?= APP_URL ?>/admin/users.php">
                                             <button type="submit" class="btn br-btn-ghost btn-sm">
                                                 <?= $u['is_active'] ? 'Disable' : 'Enable' ?>
@@ -193,7 +198,8 @@ $message = $_GET['message'] ?? '';
 
             <div class="d-flex flex-wrap gap-2 mt-3" id="expert-actions" style="display:none;">
                 <button type="button" class="btn br-btn-ghost btn-sm" id="expert-detail-btn">Expert Details</button>
-                <form method="post" action="<?= APP_URL ?>/admin/actions.php" id="verify-expert-form" style="display:none;">
+                <form method="post" action="<?= APP_URL ?>/admin/actions.php" id="verify-expert-form"
+                    style="display:none;">
                     <input type="hidden" name="csrf" value="<?= csrfToken() ?>">
                     <input type="hidden" name="entity" value="experts">
                     <input type="hidden" name="action" value="verify_expert">

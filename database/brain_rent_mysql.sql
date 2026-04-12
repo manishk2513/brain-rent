@@ -39,7 +39,7 @@ CREATE TABLE expert_profiles (
     skills                  TEXT,
     expertise_areas         TEXT,           -- JSON: ["AI","PHP","Marketing"]
     experience_years        INT,
-    current_role            VARCHAR(200),
+    current_role_name       VARCHAR(200),
     company                 VARCHAR(200),
     linkedin_url            VARCHAR(500),
     portfolio_url           VARCHAR(500),
@@ -370,7 +370,7 @@ INSERT INTO users (full_name, email, password_hash, user_type, country, is_email
 ('Arjun Sharma',    'arjun@brainrent.com',  '$2y$12$demohashedpassword4',  'client', 'India', 1, 1);
 
 INSERT INTO expert_profiles
-    (user_id, headline, expertise_areas, experience_years, current_role, company,
+    (user_id, headline, expertise_areas, experience_years, current_role_name, company,
      rate_per_session, currency, session_duration_minutes, max_response_hours,
      is_available, is_verified, average_rating, total_sessions, total_reviews)
 VALUES

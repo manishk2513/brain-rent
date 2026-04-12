@@ -7,6 +7,9 @@ $title = 'Admin Portal';
 require_once __DIR__ . '/../includes/header.php';
 
 $db = Database::getInstance();
+ensurePendingExpertProfilesTable($db);
+$status = $_GET['status'] ?? '';
+$message = $_GET['message'] ?? '';
 
 $stats = [
     'experts' => $db->fetchOne("SELECT COUNT(*) AS cnt FROM users WHERE user_type IN ('expert','both')")['cnt'] ?? 0,
@@ -18,14 +21,35 @@ $stats = [
 
 $pendingExperts = $db->fetchAll(
     "SELECT u.id, u.full_name, u.email, u.phone, u.country, u.created_at,
-            ep.headline, ep.qualification, ep.domain, ep.skills, ep.expertise_areas,
-            ep.experience_years, ep.current_role, ep.company,
-            ep.rate_per_session, ep.currency, ep.session_duration_minutes, ep.max_response_hours
-     FROM users u
-     INNER JOIN expert_profiles ep ON ep.user_id = u.id
-     WHERE u.user_type IN ('expert','both') AND IFNULL(ep.is_verified, 0) = 0
-     ORDER BY u.created_at DESC
-     LIMIT 10"
+                        pep.id AS pending_profile_id,
+                        ep.id AS expert_profile_id,
+                        COALESCE(pep.headline, ep.headline) AS headline,
+                        COALESCE(pep.qualification, ep.qualification) AS qualification,
+                        COALESCE(pep.domain, ep.domain) AS domain,
+                        COALESCE(pep.skills, ep.skills) AS skills,
+                        COALESCE(pep.expertise_areas, ep.expertise_areas) AS expertise_areas,
+                        COALESCE(pep.experience_years, ep.experience_years) AS experience_years,
+                        COALESCE(pep.current_role_name, ep.current_role_name) AS `current_role`,
+                        COALESCE(pep.company, ep.company) AS company,
+                        COALESCE(pep.rate_per_session, ep.rate_per_session, 0) AS rate_per_session,
+                        COALESCE(pep.currency, ep.currency, 'USD') AS currency,
+                        COALESCE(pep.session_duration_minutes, ep.session_duration_minutes) AS session_duration_minutes,
+                        COALESCE(pep.max_response_hours, ep.max_response_hours) AS max_response_hours,
+                        pep.status AS pending_status,
+                        pep.created_at AS pending_created_at
+         FROM users u
+         LEFT JOIN pending_expert_profiles pep
+             ON pep.user_id = u.id
+            AND pep.status = 'pending'
+         LEFT JOIN expert_profiles ep
+             ON ep.user_id = u.id
+            AND IFNULL(ep.is_verified, 0) = 0
+            AND (ep.verification_docs IS NULL OR ep.verification_docs NOT LIKE 'REJECTED:%')
+         WHERE u.user_type IN ('expert','both')
+             AND u.is_active = 1
+             AND (pep.id IS NOT NULL OR ep.id IS NOT NULL)
+         ORDER BY COALESCE(pep.created_at, u.created_at) DESC
+         LIMIT 10"
 );
 
 $experts = $db->fetchAll(
@@ -85,6 +109,12 @@ $recentVideos = $db->fetchAll(
         require __DIR__ . '/_nav.php';
         ?>
 
+        <?php if ($status && $message): ?>
+            <div class="alert alert-<?= $status === 'success' ? 'success' : 'danger' ?> mb-4">
+                <?= htmlspecialchars($message) ?>
+            </div>
+        <?php endif; ?>
+
         <div class="row g-3 mb-4">
             <div class="col-6 col-md-4 col-lg-2">
                 <div class="br-card p-3">
@@ -118,7 +148,7 @@ $recentVideos = $db->fetchAll(
             </div>
         </div>
 
-        <div class="br-card p-3 mb-4">
+        <div class="br-card p-3 mb-4" id="pending-experts">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h6 class="fw-semibold mb-0">Pending Expert Verifications</h6>
                 <span class="text-subtle small"><?= number_format(count($pendingExperts)) ?> pending</span>
@@ -173,7 +203,8 @@ $recentVideos = $db->fetchAll(
                                     <?php if ($tags): ?>
                                         <div class="d-flex flex-wrap gap-1 mt-1">
                                             <?php foreach ($tags as $tag): ?>
-                                                <span class="badge" style="background:var(--br-dark3);color:var(--br-text2);border:1px solid var(--br-border);font-weight:400">
+                                                <span class="badge"
+                                                    style="background:var(--br-dark3);color:var(--br-text2);border:1px solid var(--br-border);font-weight:400">
                                                     <?= htmlspecialchars($tag) ?>
                                                 </span>
                                             <?php endforeach; ?>
@@ -197,18 +228,26 @@ $recentVideos = $db->fetchAll(
                                     </div>
                                     <div class="text-muted small">
                                         <?= $pe['session_duration_minutes'] ? (int) $pe['session_duration_minutes'] . ' min' : 'N/A' ?>
-                                        · <?= $pe['max_response_hours'] ? (int) $pe['max_response_hours'] . ' hrs' : 'N/A' ?>
+                                        ·
+                                        <?= $pe['max_response_hours'] ? (int) $pe['max_response_hours'] . ' hrs' : 'N/A' ?>
                                     </div>
                                 </td>
                                 <td>
-                                    <form method="post" action="<?= APP_URL ?>/admin/actions.php">
-                                        <input type="hidden" name="csrf" value="<?= csrfToken() ?>">
-                                        <input type="hidden" name="entity" value="experts">
-                                        <input type="hidden" name="action" value="verify_expert">
-                                        <input type="hidden" name="id" value="<?= (int) $pe['id'] ?>">
-                                        <input type="hidden" name="redirect" value="<?= APP_URL ?>/admin/index.php">
-                                        <button type="submit" class="btn br-btn-gold btn-sm">Verify</button>
-                                    </form>
+                                    <div class="d-flex flex-wrap gap-1">
+                                        <a href="<?= APP_URL ?>/admin/expert-review.php?id=<?= (int) $pe['id'] ?>"
+                                            class="btn br-btn-ghost btn-sm">Review</a>
+                                        <?php if (!empty($pe['pending_profile_id']) || !empty($pe['expert_profile_id'])): ?>
+                                            <form method="post" action="<?= APP_URL ?>/admin/actions.php"
+                                                style="display:inline-block">
+                                                <input type="hidden" name="csrf" value="<?= csrfToken() ?>">
+                                                <input type="hidden" name="entity" value="experts">
+                                                <input type="hidden" name="action" value="verify_expert">
+                                                <input type="hidden" name="id" value="<?= (int) $pe['id'] ?>">
+                                                <input type="hidden" name="redirect" value="<?= APP_URL ?>/admin/index.php">
+                                                <button type="submit" class="btn br-btn-gold btn-sm">Verify</button>
+                                            </form>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -278,15 +317,16 @@ $recentVideos = $db->fetchAll(
                                                     <div class="text-muted small"><?= htmlspecialchars($areas) ?></div>
                                                 <?php endif; ?>
                                                 <div class="text-subtle small">
-                                                    <?= $e['experience_years'] ? (int)$e['experience_years'] . ' yrs exp' : 'Experience: N/A' ?>
+                                                    <?= $e['experience_years'] ? (int) $e['experience_years'] . ' yrs exp' : 'Experience: N/A' ?>
                                                     <?php if (!empty($e['rate_per_session'])): ?>
-                                                        · <?= htmlspecialchars($e['currency'] ?? 'USD') ?> <?= number_format((float)$e['rate_per_session'], 2) ?>
+                                                        · <?= htmlspecialchars($e['currency'] ?? 'USD') ?>
+                                                        <?= number_format((float) $e['rate_per_session'], 2) ?>
                                                     <?php endif; ?>
                                                 </div>
                                             </td>
                                             <td><?= number_format($e['solved_count']) ?></td>
                                             <td><?= number_format($e['total_sessions']) ?></td>
-                                            <td><?= number_format((float)$e['average_rating'], 1) ?></td>
+                                            <td><?= number_format((float) $e['average_rating'], 1) ?></td>
                                             <td><?= $e['is_verified'] ? 'Yes' : 'No' ?></td>
                                             <td><?= $e['is_active'] ? 'Active' : 'Disabled' ?></td>
                                         </tr>
@@ -376,14 +416,19 @@ $recentVideos = $db->fetchAll(
                                     <tr>
                                         <td><?= htmlspecialchars($n['title']) ?></td>
                                         <td>
-                                            <div class="fw-medium"><?= htmlspecialchars($n['uploader_name'] ?? 'Unknown') ?></div>
+                                            <div class="fw-medium"><?= htmlspecialchars($n['uploader_name'] ?? 'Unknown') ?>
+                                            </div>
                                             <?php if (!empty($n['uploader_email'])): ?>
-                                                <div class="text-muted small"><?= htmlspecialchars($n['uploader_email']) ?></div>
+                                                <div class="text-muted small"><?= htmlspecialchars($n['uploader_email']) ?>
+                                                </div>
                                             <?php endif; ?>
                                         </td>
                                         <td>
-                                            <a class="btn br-btn-ghost btn-sm" href="<?= APP_URL ?>/api/view-note.php?id=<?= (int)$n['id'] ?>" target="_blank">View</a>
-                                            <a class="btn br-btn-ghost btn-sm" href="<?= APP_URL ?>/api/download-note.php?id=<?= (int)$n['id'] ?>">Download</a>
+                                            <a class="btn br-btn-ghost btn-sm"
+                                                href="<?= APP_URL ?>/api/view-note.php?id=<?= (int) $n['id'] ?>"
+                                                target="_blank">View</a>
+                                            <a class="btn br-btn-ghost btn-sm"
+                                                href="<?= APP_URL ?>/api/download-note.php?id=<?= (int) $n['id'] ?>">Download</a>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -421,14 +466,19 @@ $recentVideos = $db->fetchAll(
                                     <tr>
                                         <td><?= htmlspecialchars($b['title']) ?></td>
                                         <td>
-                                            <div class="fw-medium"><?= htmlspecialchars($b['uploader_name'] ?? 'Unknown') ?></div>
+                                            <div class="fw-medium"><?= htmlspecialchars($b['uploader_name'] ?? 'Unknown') ?>
+                                            </div>
                                             <?php if (!empty($b['uploader_email'])): ?>
-                                                <div class="text-muted small"><?= htmlspecialchars($b['uploader_email']) ?></div>
+                                                <div class="text-muted small"><?= htmlspecialchars($b['uploader_email']) ?>
+                                                </div>
                                             <?php endif; ?>
                                         </td>
                                         <td>
-                                            <a class="btn br-btn-ghost btn-sm" href="<?= APP_URL ?>/api/view-ebook.php?id=<?= (int)$b['id'] ?>" target="_blank">View</a>
-                                            <a class="btn br-btn-ghost btn-sm" href="<?= APP_URL ?>/api/download-ebook.php?id=<?= (int)$b['id'] ?>">Download</a>
+                                            <a class="btn br-btn-ghost btn-sm"
+                                                href="<?= APP_URL ?>/api/view-ebook.php?id=<?= (int) $b['id'] ?>"
+                                                target="_blank">View</a>
+                                            <a class="btn br-btn-ghost btn-sm"
+                                                href="<?= APP_URL ?>/api/download-ebook.php?id=<?= (int) $b['id'] ?>">Download</a>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -466,14 +516,19 @@ $recentVideos = $db->fetchAll(
                                     <tr>
                                         <td><?= htmlspecialchars($v['title']) ?></td>
                                         <td>
-                                            <div class="fw-medium"><?= htmlspecialchars($v['uploader_name'] ?? 'Unknown') ?></div>
+                                            <div class="fw-medium"><?= htmlspecialchars($v['uploader_name'] ?? 'Unknown') ?>
+                                            </div>
                                             <?php if (!empty($v['uploader_email'])): ?>
-                                                <div class="text-muted small"><?= htmlspecialchars($v['uploader_email']) ?></div>
+                                                <div class="text-muted small"><?= htmlspecialchars($v['uploader_email']) ?>
+                                                </div>
                                             <?php endif; ?>
                                         </td>
                                         <td>
-                                            <a class="btn br-btn-ghost btn-sm" href="<?= APP_URL ?>/pages/video-detail.php?id=<?= (int)$v['id'] ?>" target="_blank">Open</a>
-                                            <a class="btn br-btn-ghost btn-sm" href="<?= APP_URL ?>/api/download-video.php?id=<?= (int)$v['id'] ?>">Download</a>
+                                            <a class="btn br-btn-ghost btn-sm"
+                                                href="<?= APP_URL ?>/pages/video-detail.php?id=<?= (int) $v['id'] ?>"
+                                                target="_blank">Open</a>
+                                            <a class="btn br-btn-ghost btn-sm"
+                                                href="<?= APP_URL ?>/api/download-video.php?id=<?= (int) $v['id'] ?>">Download</a>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>

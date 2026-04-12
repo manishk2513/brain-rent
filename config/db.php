@@ -13,11 +13,11 @@ if (file_exists(__DIR__ . '/db.local.php')) {
     require __DIR__ . '/db.local.php';
 }
 
-defined('DB_SERVER')   || define('DB_SERVER',   'localhost');       // MySQL host
-defined('DB_NAME')     || define('DB_NAME',     'brain_rent');
-defined('DB_USER')     || define('DB_USER',     'root');            // MySQL user (change if needed)
-defined('DB_PASSWORD') || define('DB_PASSWORD', '');                // MySQL password (change if needed)
-defined('DB_PORT')     || define('DB_PORT',     3306);
+defined('DB_SERVER') || define('DB_SERVER', 'localhost');       // MySQL host
+defined('DB_NAME') || define('DB_NAME', 'brain_rent');
+defined('DB_USER') || define('DB_USER', 'root');            // MySQL user (change if needed)
+defined('DB_PASSWORD') || define('DB_PASSWORD', '1234');                // MySQL password (change if needed)
+defined('DB_PORT') || define('DB_PORT', 3306);
 
 define('PLATFORM_FEE_PERCENT', 15);       // 15% commission
 
@@ -39,14 +39,14 @@ if (!defined('APP_URL')) {
 define('APP_NAME', 'BrainRent');
 
 // Razorpay Keys
-define('RAZORPAY_KEY_ID',     'rzp_test_xxxxxxxxxxxx');
+define('RAZORPAY_KEY_ID', 'rzp_test_xxxxxxxxxxxx');
 define('RAZORPAY_KEY_SECRET', 'xxxxxxxxxxxxxxxxxxxxxxx');
 
 // Email (PHPMailer / SMTP)
-define('SMTP_HOST',     'smtp.gmail.com');
-define('SMTP_PORT',     587);
-define('SMTP_USER',     'noreply@brainrent.com');
-define('SMTP_PASS',     'your_app_password');
+define('SMTP_HOST', 'smtp.gmail.com');
+define('SMTP_PORT', 587);
+define('SMTP_USER', 'noreply@brainrent.com');
+define('SMTP_PASS', 'your_app_password');
 define('SMTP_FROM_NAME', 'BrainRent');
 
 /**
@@ -109,9 +109,9 @@ class Database
         try {
             $dsn = 'mysql:host=' . DB_SERVER . ';dbname=' . DB_NAME . ';charset=utf8mb4;port=' . DB_PORT;
             $this->conn = new PDO($dsn, DB_USER, DB_PASSWORD, [
-                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES   => false,
+                PDO::ATTR_EMULATE_PREPARES => false,
             ]);
         } catch (PDOException $e) {
             error_log('DB Connection Failed: ' . $e->getMessage());
@@ -235,5 +235,7 @@ class Database
     }
 
     // Prevent cloning
-    private function __clone() {}
+    private function __clone()
+    {
+    }
 }
